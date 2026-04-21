@@ -25,7 +25,7 @@ export default function ReportsPage() {
   const [saving, setSaving] = useState(false);
 
   // ✅ FIXED HERE (no "manager")
-  const canClose = role === 'admin' || role === 'mechanic';
+  const canClose = role === 'admin' || role === 'mechanic'; //NEW COMMIT
 
   useEffect(() => {
     if (!role) return;
