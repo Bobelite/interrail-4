@@ -5,7 +5,17 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabase';
 
-export default function AppFrame({ children, title, subtitle, role }: { children: React.ReactNode; title?: string; subtitle?: string; role?: string | null; }) {
+export default function AppFrame({
+  children,
+  title,
+  subtitle,
+  role
+}: {
+  children: React.ReactNode;
+  title?: string;
+  subtitle?: string;
+  role?: string | null;
+}) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -26,18 +36,37 @@ export default function AppFrame({ children, title, subtitle, role }: { children
       <div className="topbar">
         <div>
           <div className="logo-row">
-            <Image src="/logo.webp" alt="Interrail" width={180} height={40} className="logo" />
+            <Image
+              src="/logo.webp"
+              alt="Interrail"
+              width={180}
+              height={40}
+              className="logo"
+            />
           </div>
           <div className="title">{title || 'Interrail Fleet'}</div>
-          <div className="subtitle">{subtitle || (role ? `${role} view` : 'Fleet reporting')}</div>
+          <div className="subtitle">
+            {subtitle || (role ? `${role} view` : 'Fleet reporting')}
+          </div>
         </div>
-        <button className="btn secondary" onClick={logout}>Log out</button>
+
+        <button className="btn secondary" onClick={logout}>
+          Log out
+        </button>
       </div>
-      <div className="content">{children}</div>
+
+      <div className="content with-bottom-nav">{children}</div>
+
       <div className="nav">
         <div className="nav-inner">
           {items.map((item) => (
-            <Link key={item.href} href={item.href} className={pathname === item.href ? 'active' : ''}>{item.label}</Link>
+            <Link
+              key={item.href}
+              href={item.href}
+              className={pathname === item.href ? 'active' : ''}
+            >
+              {item.label}
+            </Link>
           ))}
         </div>
       </div>
