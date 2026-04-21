@@ -55,6 +55,20 @@ export default function AppFrame({
         </button>
       </div>
 
+      <div className="desktop-nav">
+        <div className="desktop-nav-inner">
+          {items.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={pathname === item.href ? 'active' : ''}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
+      </div>
+
       <div className="content with-bottom-nav">{children}</div>
 
       <div className="nav">
