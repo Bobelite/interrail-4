@@ -43,12 +43,11 @@ export default function ReportsPage() {
   const [nextOil, setNextOil] = useState('');
   const [closingNotes, setClosingNotes] = useState('');
 
-  const canClose =
-    role === 'admin' || role === 'mechanic' || role === 'manager';
+  // ✅ FIXED HERE (removed "manager")
+  const canClose = role === 'admin' || role === 'mechanic';
 
   useEffect(() => {
     if (!role) return;
-
     void loadData();
   }, [role]);
 
@@ -83,7 +82,7 @@ export default function ReportsPage() {
     setReports((reportsData || []) as ReportRow[]);
 
     if (reportsData && reportsData.length > 0) {
-      setSelectedReport((reportsData[0] as ReportRow) || null);
+      setSelectedReport(reportsData[0] as ReportRow);
     } else {
       setSelectedReport(null);
     }
@@ -91,14 +90,13 @@ export default function ReportsPage() {
 
   async function markInProgress() {
     if (!selectedReport) return;
+
     setSaving(true);
     setScreenError(null);
 
     const { error } = await supabase
       .from('reports')
-      .update({
-        status: 'In Progress'
-      })
+      .update({ status: 'In Progress' })
       .eq('id', selectedReport.id);
 
     setSaving(false);
@@ -214,176 +212,42 @@ export default function ReportsPage() {
       title="Reports"
       subtitle="Open, in progress, and recently closed reports"
     >
-      {screenError ? <div className="error">{screenError}</div> : null}
+      {screenError && <div className="error">{screenError}</div>}
 
       <div className="grid-2">
         <div className="card">
           <div className="section-title">Reports</div>
-          <div className="section-sub">
-            Open, in progress, and recently closed reports.
-          </div>
 
           <div className="stack" style={{ marginTop: 16 }}>
-            {reports.length === 0 ? (
-              <div className="card">No reports found.</div>
-            ) : (
-              reports.map((report) => {
-                const vehicle = report.vehicle_id
-                  ? vehicles[report.vehicle_id]
-                  : null;
-
-                return (
-                  <button
-                    key={report.id}
-                    type="button"
-                    className="card"
-                    style={{
-                      textAlign: 'left',
-                      border:
-                        selectedReport?.id === report.id
-                          ? '2px solid var(--blue)'
-                          : undefined
-                    }}
-                    onClick={() => setSelectedReport(report)}
-                  >
-                    <div className="title">{report.title || 'Untitled report'}</div>
-                    <div className="subtitle">
-                      {report.report_type || 'Report'} • {report.status || 'Open'}
-                    </div>
-                    <div className="small" style={{ marginTop: 6 }}>
-                      {vehicle
-                        ? `${vehicle.equipment_name || 'Vehicle'} • Unit ${vehicle.unit_number || '—'}`
-                        : 'Vehicle not found'}
-                    </div>
-                  </button>
-                );
-              })
-            )}
+            {reports.map((report) => (
+              <button
+                key={report.id}
+                className="card"
+                onClick={() => setSelectedReport(report)}
+              >
+                <div className="title">{report.title}</div>
+                <div className="subtitle">
+                  {report.report_type} • {report.status}
+                </div>
+              </button>
+            ))}
           </div>
         </div>
 
         <div className="card">
           {!selectedReport ? (
-            <div>No report selected.</div>
+            <div>No report selected</div>
           ) : (
             <>
-              <div className="section-title">
-                {selectedReport.title || 'Untitled report'}
-              </div>
-              <div className="section-sub">
-                {selectedReport.report_type || 'Report'} •{' '}
-                {selectedReport.status || 'Open'}
-              </div>
+              <div className="title">{selectedReport.title}</div>
 
-              <div style={{ marginTop: 16 }}>
-                <div className="label">Description</div>
-                <div className="card" style={{ marginTop: 8 }}>
-                  {selectedReport.description || 'No description'}
+              {canClose && selectedReport.status !== 'Closed' && (
+                <div style={{ marginTop: 16 }}>
+                  <button className="btn" onClick={closeReport}>
+                    Close Report
+                  </button>
                 </div>
-              </div>
-
-              <div className="grid-2" style={{ marginTop: 16 }}>
-                <div>
-                  <div className="label">Submitted</div>
-                  <div className="card" style={{ marginTop: 8 }}>
-                    {selectedReport.submitted_at
-                      ? new Date(selectedReport.submitted_at).toLocaleString()
-                      : '—'}
-                  </div>
-                </div>
-                <div>
-                  <div className="label">Closed</div>
-                  <div className="card" style={{ marginTop: 8 }}>
-                    {selectedReport.closed_at
-                      ? new Date(selectedReport.closed_at).toLocaleString()
-                      : '—'}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid-2" style={{ marginTop: 16 }}>
-                <div>
-                  <div className="label">Submitted Mileage</div>
-                  <div className="card" style={{ marginTop: 8 }}>
-                    {selectedReport.submitted_mileage ?? '—'}
-                  </div>
-                </div>
-                <div>
-                  <div className="label">Submitted Hours</div>
-                  <div className="card" style={{ marginTop: 8 }}>
-                    {selectedReport.submitted_hours ?? '—'}
-                  </div>
-                </div>
-              </div>
-
-              {canClose && selectedReport.status !== 'Closed' ? (
-                <div className="card" style={{ marginTop: 18 }}>
-                  <div className="section-title">Mechanic / Admin Close-Out</div>
-                  <div className="section-sub">
-                    Mileage, hours, and next oil change update the vehicle when
-                    entered here.
-                  </div>
-
-                  <div className="grid-2" style={{ marginTop: 16 }}>
-                    <div className="field">
-                      <label className="label">Mileage at Close</label>
-                      <input
-                        className="input"
-                        value={closeMileage}
-                        onChange={(e) => setCloseMileage(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="field">
-                      <label className="label">Hours at Close</label>
-                      <input
-                        className="input"
-                        value={closeHours}
-                        onChange={(e) => setCloseHours(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="field" style={{ marginTop: 14 }}>
-                    <label className="label">Next Oil Change</label>
-                    <input
-                      className="input"
-                      value={nextOil}
-                      onChange={(e) => setNextOil(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="field" style={{ marginTop: 14 }}>
-                    <label className="label">Closing Notes</label>
-                    <textarea
-                      className="input"
-                      value={closingNotes}
-                      onChange={(e) => setClosingNotes(e.target.value)}
-                      rows={4}
-                    />
-                  </div>
-
-                  <div style={{ display: 'flex', gap: 12, marginTop: 18 }}>
-                    <button
-                      className="btn secondary"
-                      type="button"
-                      onClick={markInProgress}
-                      disabled={saving}
-                    >
-                      Mark In Progress
-                    </button>
-
-                    <button
-                      className="btn"
-                      type="button"
-                      onClick={closeReport}
-                      disabled={saving}
-                    >
-                      {saving ? 'Saving…' : 'Close Report'}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
+              )}
             </>
           )}
         </div>
