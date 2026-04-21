@@ -70,7 +70,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      <div className="grid-2" style={{ marginTop: 14 }}>
+      <div className="grid-2" style={{ marginTop: 18 }}>
         <Link
           href="/new-report"
           className="card"
@@ -90,10 +90,10 @@ export default function HomePage() {
         </Link>
       </div>
 
-      <div className="card" style={{ marginTop: 14 }}>
-        <div className="title">This version is wired to Supabase</div>
+      <div className="card" style={{ marginTop: 18 }}>
+        <div className="title">Interrail Fleet</div>
         <div className="subtitle">
-          Vehicles and reports should save for real in this build.
+          Clean mobile layout with working reports, close-out, and live data.
         </div>
       </div>
     </AppFrame>
