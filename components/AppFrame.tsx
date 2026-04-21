@@ -39,12 +39,12 @@ export default function AppFrame({
             <Image
               src="/logo.webp"
               alt="Interrail"
-              width={180}
-              height={40}
+              width={280}
+              height={60}
               className="logo"
             />
           </div>
-         <div className="title">{title || 'INTERRAIL FLEET new'}</div>
+          <div className="title">{title || 'Interrail Fleet'}</div>
           <div className="subtitle">
             {subtitle || (role ? `${role} view` : 'Fleet reporting')}
           </div>
