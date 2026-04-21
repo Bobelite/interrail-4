@@ -44,7 +44,7 @@ export default function AppFrame({
               className="logo"
             />
           </div>
-          <div className="title">{title || 'Interrail Fleet'}</div>
+         <div className="title">{title || 'INTERTRAIL TEST 123'}</div>
           <div className="subtitle">
             {subtitle || (role ? `${role} view` : 'Fleet reporting')}
           </div>
