@@ -16,7 +16,8 @@ export function useAuthPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        const { data: sessionData, error: sessionError } =
+          await supabase.auth.getSession();
 
         if (sessionError) {
           setError(sessionError.message);
