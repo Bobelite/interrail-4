@@ -1,68 +1,233 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import AppFrame from '../../components/AppFrame';
 import { supabase } from '../../lib/supabase';
 import { useAuthPage } from '../../lib/useAuth';
-import type { Vehicle } from '../../lib/types';
+
+type VehicleRow = {
+  id: string;
+  equipment_name: string | null;
+  unit_number: string | null;
+};
 
 export default function NewReportPage() {
-  const router = useRouter();
-  const { loading, role, error, profile, userId } = useAuthPage();
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [form, setForm] = useState({ vehicle_id: '', report_type: 'Repair', title: '', description: '', submitted_mileage: '', submitted_hours: '' });
+  const { loading, role, profile, error } = useAuthPage();
+
+  const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
+  const [screenError, setScreenError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
+
+  const [vehicleId, setVehicleId] = useState('');
+  const [reportType, setReportType] = useState('Repair');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [mileage, setMileage] = useState('');
+  const [hours, setHours] = useState('');
 
   useEffect(() => {
     if (!role) return;
+
     void (async () => {
-      const { data } = await supabase.from('vehicles').select('*').order('equipment_name');
-      const list = (data || []) as Vehicle[];
-      setVehicles(list);
-      if (list[0]) setForm((f) => ({ ...f, vehicle_id: list[0].id }));
+      const { data, error } = await supabase
+        .from('vehicles')
+        .select('id, equipment_name, unit_number')
+        .order('equipment_name', { ascending: true });
+
+      if (error) {
+        setScreenError(error.message);
+        return;
+      }
+
+      const rows = (data || []) as VehicleRow[];
+      setVehicles(rows);
+
+      if (rows.length > 0) {
+        setVehicleId(rows[0].id);
+      }
     })();
   }, [role]);
 
-  async function submit(e: React.FormEvent) {
+  async function submitReport(e: React.FormEvent) {
     e.preventDefault();
-    if (!userId) return;
-    const { error } = await supabase.from('reports').insert({
-      vehicle_id: form.vehicle_id,
-      report_type: form.report_type,
-      title: form.title,
-      description: form.description || null,
-      submitted_mileage: form.submitted_mileage ? Number(form.submitted_mileage) : null,
-      submitted_hours: form.submitted_hours ? Number(form.submitted_hours) : null,
-      status: 'Open',
-      created_by_name: profile?.full_name || 'User',
-      submitted_by: userId,
-    });
-    if (error) {
-      setMsg(error.message);
+
+    if (!profile) {
+      setScreenError('You must be logged in to submit a report.');
       return;
     }
-    router.push('/reports');
+
+    if (!vehicleId) {
+      setScreenError('Please select a vehicle.');
+      return;
+    }
+
+    if (!title.trim()) {
+      setScreenError('Please enter a title.');
+      return;
+    }
+
+    if (!description.trim()) {
+      setScreenError('Please enter a description.');
+      return;
+    }
+
+    setSaving(true);
+    setScreenError(null);
+    setSavedMessage(null);
+
+    const payload: Record<string, any> = {
+      vehicle_id: vehicleId,
+      report_type: reportType,
+      title: title.trim(),
+      description: description.trim(),
+      status: 'Open',
+      submitted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      created_by: profile.id,
+      created_by_name: profile.full_name,
+      submitted_by: profile.full_name,
+      submitted_mileage: mileage ? Number(mileage) : null,
+      submitted_hours: hours ? Number(hours) : null
+    };
+
+    const { error } = await supabase.from('reports').insert(payload);
+
+    setSaving(false);
+
+    if (error) {
+      setScreenError(error.message);
+      return;
+    }
+
+    setSavedMessage('Report submitted successfully.');
+    setReportType('Repair');
+    setTitle('');
+    setDescription('');
+    setMileage('');
+    setHours('');
   }
 
-  if (loading) return <div className="page-shell"><div className="content"><div className="card">Loading…</div></div></div>;
-  if (error) return <div className="page-shell"><div className="content"><div className="error">{error}</div></div></div>;
+  if (loading) {
+    return (
+      <div className="page-shell">
+        <div className="content">
+          <div className="card">Loading…</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page-shell">
+        <div className="content">
+          <div className="error">{error}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <AppFrame role={role} title="New Report" subtitle="Service, repair, or note. Mileage and hours stay optional.">
-      <div className="card" style={{ maxWidth: 760 }}>
-        <form className="stack" onSubmit={submit}>
-          <div className="field"><label className="label">Vehicle</label><select className="select" value={form.vehicle_id} onChange={(e) => setForm({ ...form, vehicle_id: e.target.value })}>{vehicles.map((v) => <option key={v.id} value={v.id}>{v.equipment_name} • Unit {v.unit_number || '—'}</option>)}</select></div>
-          <div className="field"><label className="label">Report Type</label><select className="select" value={form.report_type} onChange={(e) => setForm({ ...form, report_type: e.target.value })}><option>Service</option><option>Repair</option><option>Note</option></select></div>
-          <div className="field"><label className="label">Title</label><input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required /></div>
-          <div className="field"><label className="label">Description</label><textarea className="textarea" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
-          <div className="grid-2">
-            <div className="field"><label className="label">Mileage</label><input className="input" value={form.submitted_mileage} onChange={(e) => setForm({ ...form, submitted_mileage: e.target.value })} /></div>
-            <div className="field"><label className="label">Hours</label><input className="input" value={form.submitted_hours} onChange={(e) => setForm({ ...form, submitted_hours: e.target.value })} /></div>
+    <AppFrame
+      role={role}
+      title="New Report"
+      subtitle="Service, repair, or note. Mileage and hours stay optional."
+    >
+      {screenError ? <div className="error">{screenError}</div> : null}
+
+      {savedMessage ? (
+        <div
+          className="card"
+          style={{
+            marginBottom: 16,
+            borderColor: '#cfe8d7',
+            background: '#f3fbf6'
+          }}
+        >
+          <div style={{ fontWeight: 800, color: '#187144' }}>{savedMessage}</div>
+        </div>
+      ) : null}
+
+      <div className="card" style={{ maxWidth: 860 }}>
+        <form onSubmit={submitReport}>
+          <div className="field">
+            <label className="label">Vehicle</label>
+            <select
+              value={vehicleId}
+              onChange={(e) => setVehicleId(e.target.value)}
+            >
+              {vehicles.map((vehicle) => (
+                <option key={vehicle.id} value={vehicle.id}>
+                  {vehicle.equipment_name || 'Unnamed Vehicle'} • Unit{' '}
+                  {vehicle.unit_number || '—'}
+                </option>
+              ))}
+            </select>
           </div>
-          <div className="small">Photo upload can be added next, but this build will save the actual report data now.</div>
-          {msg ? <div className="error">{msg}</div> : null}
-          <button className="btn" type="submit">Submit Report</button>
+
+          <div className="field">
+            <label className="label">Report Type</label>
+            <select
+              value={reportType}
+              onChange={(e) => setReportType(e.target.value)}
+            >
+              <option value="Service">Service</option>
+              <option value="Repair">Repair</option>
+              <option value="Note">Note</option>
+            </select>
+          </div>
+
+          <div className="field">
+            <label className="label">Title</label>
+            <input
+              className="input"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Short description"
+            />
+          </div>
+
+          <div className="field">
+            <label className="label">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe the issue, service need, or note"
+            />
+          </div>
+
+          <div className="grid-2">
+            <div className="field">
+              <label className="label">Mileage</label>
+              <input
+                className="input"
+                value={mileage}
+                onChange={(e) => setMileage(e.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+
+            <div className="field">
+              <label className="label">Hours</label>
+              <input
+                className="input"
+                value={hours}
+                onChange={(e) => setHours(e.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+
+          <div className="small" style={{ marginTop: 14 }}>
+            Photo upload can be added next. This version saves the report data now.
+          </div>
+
+          <div style={{ marginTop: 18 }}>
+            <button className="btn" type="submit" disabled={saving}>
+              {saving ? 'Submitting…' : 'Submit Report'}
+            </button>
+          </div>
         </form>
       </div>
     </AppFrame>
