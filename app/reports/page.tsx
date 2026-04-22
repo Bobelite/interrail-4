@@ -165,18 +165,26 @@ export default function ReportsPage() {
           updated_at: new Date().toISOString()
         };
 
-        if (closeMileage) {
-          const newMileage = Number(closeMileage);
-          if (!vehicle.current_mileage || newMileage > vehicle.current_mileage) {
-            vehicleUpdate.current_mileage = newMileage;
-          }
+        const newMileage = closeMileage
+          ? Number(closeMileage)
+          : selectedReport.submitted_mileage ?? null;
+
+        const newHours = closeHours
+          ? Number(closeHours)
+          : selectedReport.submitted_hours ?? null;
+
+        if (
+          newMileage !== null &&
+          (!vehicle.current_mileage || newMileage > vehicle.current_mileage)
+        ) {
+          vehicleUpdate.current_mileage = newMileage;
         }
 
-        if (closeHours) {
-          const newHours = Number(closeHours);
-          if (!vehicle.current_hours || newHours > vehicle.current_hours) {
-            vehicleUpdate.current_hours = newHours;
-          }
+        if (
+          newHours !== null &&
+          (!vehicle.current_hours || newHours > vehicle.current_hours)
+        ) {
+          vehicleUpdate.current_hours = newHours;
         }
 
         if (nextOil) {
