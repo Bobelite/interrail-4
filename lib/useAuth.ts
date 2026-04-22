@@ -16,22 +16,22 @@ export function useAuthPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const { data: authData, error: authError } = await supabase.auth.getUser();
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
-        if (authError) {
-          console.error('Auth error:', authError);
-          setError(authError.message);
+        if (sessionError) {
+          setError(sessionError.message);
           setLoading(false);
           return;
         }
 
-        const user = authData.user;
+        const session = sessionData.session;
 
-        if (!user) {
+        if (!session?.user) {
           router.replace('/login');
           return;
         }
 
+        const user = session.user;
         setUserId(user.id);
 
         const { data, error: profileError } = await supabase
@@ -41,14 +41,12 @@ export function useAuthPage() {
           .maybeSingle();
 
         if (profileError) {
-          console.error('Profile fetch error:', profileError);
           setError(profileError.message);
           setLoading(false);
           return;
         }
 
         if (!data) {
-          console.warn('No profile found for user:', user.id);
           setError('Profile not found.');
           setLoading(false);
           return;
@@ -57,8 +55,7 @@ export function useAuthPage() {
         setProfile(data as Profile);
         setRole((data as Profile).role);
         setLoading(false);
-      } catch (err: any) {
-        console.error('Unexpected auth error:', err);
+      } catch {
         setError('Unexpected error occurred.');
         setLoading(false);
       }
