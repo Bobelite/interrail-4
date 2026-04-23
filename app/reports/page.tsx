@@ -5,6 +5,21 @@ import AppFrame from '../../components/AppFrame';
 import { supabase } from '../../lib/supabase';
 import { useAuthPage } from '../../lib/useAuth';
 
+type ReportRow = {
+  id: string;
+  title: string | null;
+  description: string | null;
+  report_type: string | null;
+  status: string | null;
+  submitted_at: string | null;
+  closed_at: string | null;
+  vehicle_id: string | null;
+  submitted_mileage: number | null;
+  submitted_hours: number | null;
+  closing_notes: string | null;
+  next_oil_change_at_close: number | null;
+};
+
 type VehicleRow = {
   id: string;
   equipment_name: string | null;
@@ -14,94 +29,247 @@ type VehicleRow = {
   next_oil_change: number | null;
 };
 
-type ReportRow = {
-  id: string;
-  vehicle_id: string | null;
-  title: string | null;
-  report_type: string | null;
-  status: string | null;
-  submitted_at: string | null;
-  closed_at: string | null;
-  description: string | null;
-  closing_notes: string | null;
-};
+function formatDate(value: string | null) {
+  if (!value) return '—';
+  return new Date(value).toLocaleString();
+}
 
 function formatNumber(value: number | null) {
   if (value === null || value === undefined) return '—';
   return new Intl.NumberFormat().format(value);
 }
 
-function formatShortDate(value: string | null) {
-  if (!value) return '—';
-  return new Date(value).toLocaleDateString();
-}
-
-function badgeClass(status: string | null) {
+function reportBadgeClass(status: string | null) {
   if (status === 'Closed') return 'badge closed';
   if (status === 'In Progress') return 'badge progress';
   return 'badge open';
 }
 
-export default function VehiclesPage() {
-  const { loading, role, error } = useAuthPage();
+export default function ReportsPage() {
+  const { loading, role, profile, error } = useAuthPage();
 
-  const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
   const [reports, setReports] = useState<ReportRow[]>([]);
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [vehicles, setVehicles] = useState<Record<string, VehicleRow>>({});
+  const [selectedReport, setSelectedReport] = useState<ReportRow | null>(null);
   const [screenError, setScreenError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const [closeMileage, setCloseMileage] = useState('');
+  const [closeHours, setCloseHours] = useState('');
+  const [nextOil, setNextOil] = useState('');
+  const [closingNotes, setClosingNotes] = useState('');
+
+  const canClose = role === 'admin' || role === 'mechanic';
+  const isAdmin = role === 'admin';
 
   useEffect(() => {
     if (!role) return;
-
-    void (async () => {
-      setScreenError(null);
-
-      const { data: vehicleData, error: vehicleError } = await supabase
-        .from('vehicles')
-        .select('*')
-        .order('equipment_name', { ascending: true });
-
-      if (vehicleError) {
-        setScreenError(vehicleError.message);
-        return;
-      }
-
-      const { data: reportData, error: reportError } = await supabase
-        .from('reports')
-        .select('id, vehicle_id, title, report_type, status, submitted_at, closed_at, description, closing_notes')
-        .order('submitted_at', { ascending: false });
-
-      if (reportError) {
-        setScreenError(reportError.message);
-        return;
-      }
-
-      const vehicleRows = (vehicleData || []) as VehicleRow[];
-      setVehicles(vehicleRows);
-      setReports((reportData || []) as ReportRow[]);
-
-      if (vehicleRows.length > 0) {
-        setSelectedVehicleId(vehicleRows[0].id);
-      }
-    })();
+    void loadData();
   }, [role]);
 
-  const selectedVehicle = useMemo(
-    () => vehicles.find((v) => v.id === selectedVehicleId) || null,
-    [vehicles, selectedVehicleId]
-  );
+  async function loadData() {
+    setScreenError(null);
 
-  const selectedVehicleHistory = useMemo(() => {
-    if (!selectedVehicleId) return [];
-    return reports
-      .filter((r) => r.vehicle_id === selectedVehicleId)
-      .sort((a, b) => {
-        const aDate = a.submitted_at ? new Date(a.submitted_at).getTime() : 0;
-        const bDate = b.submitted_at ? new Date(b.submitted_at).getTime() : 0;
-        return bDate - aDate;
+    const { data: reportsData, error: reportsError } = await supabase
+      .from('reports')
+      .select('*')
+      .order('submitted_at', { ascending: false });
+
+    if (reportsError) {
+      setScreenError(reportsError.message);
+      return;
+    }
+
+    const { data: vehiclesData, error: vehiclesError } = await supabase
+      .from('vehicles')
+      .select('*');
+
+    if (vehiclesError) {
+      setScreenError(vehiclesError.message);
+      return;
+    }
+
+    const vehicleMap: Record<string, VehicleRow> = {};
+    (vehiclesData || []).forEach((v) => {
+      vehicleMap[v.id] = v as VehicleRow;
+    });
+
+    setVehicles(vehicleMap);
+
+    const filtered = ((reportsData || []) as ReportRow[]).filter((r) => {
+      if (r.status !== 'Closed') return true;
+      if (!r.closed_at) return true;
+      const ageDays = (Date.now() - new Date(r.closed_at).getTime()) / 86400000;
+      return ageDays <= 30;
+    });
+
+    setReports(filtered);
+    setSelectedReport(filtered[0] || null);
+  }
+
+  async function markInProgress() {
+    if (!selectedReport) return;
+
+    setSaving(true);
+    setScreenError(null);
+
+    const { error } = await supabase
+      .from('reports')
+      .update({
+        status: 'In Progress',
+        updated_at: new Date().toISOString()
       })
-      .slice(0, 8);
-  }, [reports, selectedVehicleId]);
+      .eq('id', selectedReport.id);
+
+    setSaving(false);
+
+    if (error) {
+      setScreenError(error.message);
+      return;
+    }
+
+    await loadData();
+  }
+
+  async function closeReport() {
+    if (!selectedReport || !profile) return;
+
+    setSaving(true);
+    setScreenError(null);
+
+    const { error: reportError } = await supabase
+      .from('reports')
+      .update({
+        status: 'Closed',
+        closed_at: new Date().toISOString(),
+        closed_by: profile.id,
+        closing_notes: closingNotes || null,
+        closed_mileage: closeMileage ? Number(closeMileage) : null,
+        closed_hours: closeHours ? Number(closeHours) : null,
+        next_oil_change_at_close: nextOil ? Number(nextOil) : null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', selectedReport.id);
+
+    if (reportError) {
+      setSaving(false);
+      setScreenError(reportError.message);
+      return;
+    }
+
+    if (selectedReport.vehicle_id) {
+      const vehicle = vehicles[selectedReport.vehicle_id];
+
+      if (vehicle) {
+        const vehicleUpdate: Record<string, any> = {
+          updated_at: new Date().toISOString()
+        };
+
+        const newMileage = closeMileage
+          ? Number(closeMileage)
+          : selectedReport.submitted_mileage ?? null;
+
+        const newHours = closeHours
+          ? Number(closeHours)
+          : selectedReport.submitted_hours ?? null;
+
+        if (
+          newMileage !== null &&
+          (!vehicle.current_mileage || newMileage > vehicle.current_mileage)
+        ) {
+          vehicleUpdate.current_mileage = newMileage;
+        }
+
+        if (
+          newHours !== null &&
+          (!vehicle.current_hours || newHours > vehicle.current_hours)
+        ) {
+          vehicleUpdate.current_hours = newHours;
+        }
+
+        if (nextOil) {
+          vehicleUpdate.next_oil_change = Number(nextOil);
+        }
+
+        const { error: vehicleError } = await supabase
+          .from('vehicles')
+          .update(vehicleUpdate)
+          .eq('id', selectedReport.vehicle_id);
+
+        if (vehicleError) {
+          setSaving(false);
+          setScreenError(vehicleError.message);
+          return;
+        }
+      }
+    }
+
+    setSaving(false);
+    setCloseMileage('');
+    setCloseHours('');
+    setNextOil('');
+    setClosingNotes('');
+
+    await loadData();
+  }
+
+  async function exportAllReportsCsv() {
+    setScreenError(null);
+
+    const { data, error } = await supabase
+      .from('reports')
+      .select('*')
+      .order('submitted_at', { ascending: false });
+
+    if (error) {
+      setScreenError(error.message);
+      return;
+    }
+
+    const rows = (data || []) as any[];
+
+    const headers = [
+      'title',
+      'report_type',
+      'status',
+      'vehicle_id',
+      'submitted_at',
+      'closed_at',
+      'submitted_mileage',
+      'submitted_hours',
+      'closed_mileage',
+      'closed_hours',
+      'next_oil_change_at_close',
+      'description',
+      'closing_notes'
+    ];
+
+    const csv = [
+      headers.join(','),
+      ...rows.map((row) =>
+        headers
+          .map((header) => {
+            const value = row[header] ?? '';
+            const escaped = String(value).replace(/"/g, '""');
+            return `"${escaped}"`;
+          })
+          .join(',')
+      )
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `interrail-reports-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const reportCountText = useMemo(() => {
+    if (reports.length === 1) return '1 report';
+    return `${reports.length} reports`;
+  }, [reports.length]);
 
   if (loading) {
     return (
@@ -126,140 +294,166 @@ export default function VehiclesPage() {
   return (
     <AppFrame
       role={role}
-      title="Vehicles"
-      subtitle="Equipment details, current readings, and recent history."
+      title="Reports"
+      subtitle="Open, in progress, and recently closed reports."
     >
       {screenError ? <div className="error">{screenError}</div> : null}
 
+      <div className="inline-row" style={{ marginBottom: 16 }}>
+        {isAdmin ? (
+          <button className="btn secondary" onClick={exportAllReportsCsv}>
+            Download All Reports (CSV for Excel)
+          </button>
+        ) : null}
+      </div>
+
       <div className="grid-2">
         <div className="card">
-          <div className="section-title">Vehicle List</div>
-          <div className="section-sub">
-            Tap a vehicle to see current readings and recent repair/service history.
-          </div>
+          <div className="section-title">Reports</div>
+          <div className="section-sub">{reportCountText}</div>
 
           <div className="stack" style={{ marginTop: 16 }}>
-            {vehicles.length === 0 ? (
-              <div className="card">No vehicles found.</div>
+            {reports.length === 0 ? (
+              <div className="card">No reports found.</div>
             ) : (
-              vehicles.map((vehicle) => (
-                <button
-                  key={vehicle.id}
-                  type="button"
-                  className={`report-list-button ${selectedVehicleId === vehicle.id ? 'active' : ''}`}
-                  onClick={() => setSelectedVehicleId(vehicle.id)}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                    <div>
-                      <div className="title" style={{ fontSize: 20 }}>
-                        {vehicle.equipment_name || 'Unnamed Vehicle'}
-                      </div>
-                      <div className="subtitle">
-                        Unit {vehicle.unit_number || '—'}
-                      </div>
-                    </div>
+              reports.map((report) => {
+                const vehicle = report.vehicle_id ? vehicles[report.vehicle_id] : null;
 
-                    <div className="small" style={{ fontWeight: 700 }}>
-                      {reports.filter((r) => r.vehicle_id === vehicle.id && r.status !== 'Closed').length} open
+                return (
+                  <button
+                    key={report.id}
+                    type="button"
+                    className={`report-list-button ${selectedReport?.id === report.id ? 'active' : ''}`}
+                    onClick={() => setSelectedReport(report)}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                      <div>
+                        <div className="title" style={{ fontSize: 20 }}>
+                          {report.title || 'Untitled Report'}
+                        </div>
+                        <div className="subtitle">
+                          {report.report_type || 'Report'} • {vehicle?.equipment_name || 'Vehicle'}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className={reportBadgeClass(report.status)}>
+                          {report.status || 'Open'}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </button>
-              ))
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
 
         <div className="card">
-          {!selectedVehicle ? (
-            <div>No vehicle selected.</div>
+          {!selectedReport ? (
+            <div>No report selected.</div>
           ) : (
             <>
-              <div className="title">
-                {selectedVehicle.equipment_name || 'Unnamed Vehicle'}
-              </div>
-              <div className="subtitle" style={{ marginTop: 4 }}>
-                Unit {selectedVehicle.unit_number || '—'}
+              <div className="title">{selectedReport.title || 'Untitled Report'}</div>
+              <div className="subtitle" style={{ marginTop: 6 }}>
+                {selectedReport.report_type || 'Report'} • {selectedReport.status || 'Open'}
               </div>
 
-              <div className="grid-3" style={{ marginTop: 18 }}>
+              <div style={{ marginTop: 18 }}>
+                <div className="label">Description</div>
                 <div className="card" style={{ padding: 16 }}>
-                  <div className="small" style={{ fontWeight: 700 }}>Current Mileage</div>
-                  <div style={{ marginTop: 8, fontSize: 24, fontWeight: 800 }}>
-                    {formatNumber(selectedVehicle.current_mileage)}
-                  </div>
-                </div>
-
-                <div className="card" style={{ padding: 16 }}>
-                  <div className="small" style={{ fontWeight: 700 }}>Current Hours</div>
-                  <div style={{ marginTop: 8, fontSize: 24, fontWeight: 800 }}>
-                    {formatNumber(selectedVehicle.current_hours)}
-                  </div>
-                </div>
-
-                <div className="card" style={{ padding: 16 }}>
-                  <div className="small" style={{ fontWeight: 700 }}>Next Oil Change</div>
-                  <div style={{ marginTop: 8, fontSize: 24, fontWeight: 800 }}>
-                    {formatNumber(selectedVehicle.next_oil_change)}
-                  </div>
+                  {selectedReport.description || 'No description'}
                 </div>
               </div>
 
-              <div style={{ marginTop: 22 }}>
-                <div className="section-title">Recent History</div>
-                <div className="section-sub">
-                  Recent reports, repairs, and services for this vehicle.
+              <div className="grid-2" style={{ marginTop: 18 }}>
+                <div className="card" style={{ padding: 16 }}>
+                  <div className="small" style={{ fontWeight: 700 }}>Submitted</div>
+                  <div style={{ marginTop: 6 }}>{formatDate(selectedReport.submitted_at)}</div>
                 </div>
 
-                <div className="stack" style={{ marginTop: 14 }}>
-                  {selectedVehicleHistory.length === 0 ? (
-                    <div className="card" style={{ padding: 16 }}>
-                      No history found for this vehicle.
+                <div className="card" style={{ padding: 16 }}>
+                  <div className="small" style={{ fontWeight: 700 }}>Closed</div>
+                  <div style={{ marginTop: 6 }}>{formatDate(selectedReport.closed_at)}</div>
+                </div>
+              </div>
+
+              <div className="grid-2" style={{ marginTop: 18 }}>
+                <div className="card" style={{ padding: 16 }}>
+                  <div className="small" style={{ fontWeight: 700 }}>Submitted Mileage</div>
+                  <div style={{ marginTop: 6 }}>{formatNumber(selectedReport.submitted_mileage)}</div>
+                </div>
+
+                <div className="card" style={{ padding: 16 }}>
+                  <div className="small" style={{ fontWeight: 700 }}>Submitted Hours</div>
+                  <div style={{ marginTop: 6 }}>{formatNumber(selectedReport.submitted_hours)}</div>
+                </div>
+              </div>
+
+              {selectedReport.closing_notes ? (
+                <div style={{ marginTop: 18 }}>
+                  <div className="label">Closing Notes</div>
+                  <div className="card" style={{ padding: 16 }}>
+                    {selectedReport.closing_notes}
+                  </div>
+                </div>
+              ) : null}
+
+              {canClose && selectedReport.status !== 'Closed' ? (
+                <div className="card" style={{ marginTop: 18 }}>
+                  <div className="section-title">Mechanic / Admin Close-Out</div>
+                  <div className="section-sub">
+                    Mileage, hours, and next oil change update the vehicle when entered here.
+                  </div>
+
+                  <div className="grid-2" style={{ marginTop: 16 }}>
+                    <div className="field">
+                      <label className="label">Mileage at Close</label>
+                      <input
+                        className="input"
+                        value={closeMileage}
+                        onChange={(e) => setCloseMileage(e.target.value)}
+                      />
                     </div>
-                  ) : (
-                    selectedVehicleHistory.map((report) => (
-                      <div key={report.id} className="card" style={{ padding: 16 }}>
-                        <div
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            gap: 12,
-                            alignItems: 'flex-start'
-                          }}
-                        >
-                          <div>
-                            <div className="title" style={{ fontSize: 18 }}>
-                              {report.title || 'Untitled Report'}
-                            </div>
-                            <div className="subtitle" style={{ marginTop: 4 }}>
-                              {report.report_type || 'Report'} • Submitted {formatShortDate(report.submitted_at)}
-                            </div>
-                          </div>
 
-                          <span className={badgeClass(report.status)}>
-                            {report.status || 'Open'}
-                          </span>
-                        </div>
+                    <div className="field">
+                      <label className="label">Hours at Close</label>
+                      <input
+                        className="input"
+                        value={closeHours}
+                        onChange={(e) => setCloseHours(e.target.value)}
+                      />
+                    </div>
+                  </div>
 
-                        {report.description ? (
-                          <div className="small" style={{ marginTop: 10 }}>
-                            {report.description}
-                          </div>
-                        ) : null}
+                  <div className="field">
+                    <label className="label">Next Oil Change</label>
+                    <input
+                      className="input"
+                      value={nextOil}
+                      onChange={(e) => setNextOil(e.target.value)}
+                    />
+                  </div>
 
-                        {report.closing_notes ? (
-                          <div className="small" style={{ marginTop: 10 }}>
-                            <strong>Closing Notes:</strong> {report.closing_notes}
-                          </div>
-                        ) : null}
+                  <div className="field">
+                    <label className="label">Closing Notes</label>
+                    <textarea
+                      value={closingNotes}
+                      onChange={(e) => setClosingNotes(e.target.value)}
+                    />
+                  </div>
 
-                        <div className="small" style={{ marginTop: 10 }}>
-                          Closed: {formatShortDate(report.closed_at)}
-                        </div>
-                      </div>
-                    ))
-                  )}
+                  <div className="inline-row" style={{ marginTop: 16 }}>
+                    <button className="btn secondary" onClick={markInProgress} disabled={saving}>
+                      Mark In Progress
+                    </button>
+
+                    <button className="btn" onClick={closeReport} disabled={saving}>
+                      {saving ? 'Saving…' : 'Close Report'}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </>
           )}
         </div>
