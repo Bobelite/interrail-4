@@ -145,6 +145,10 @@ export default function ReportsPage() {
     setSaving(true);
     setScreenError(null);
 
+    const closedMileageValue = closeMileage ? Number(closeMileage) : null;
+    const closedHoursValue = closeHours ? Number(closeHours) : null;
+    const nextOilValue = nextOil ? Number(nextOil) : null;
+
     const { error: reportError } = await supabase
       .from('reports')
       .update({
@@ -153,9 +157,9 @@ export default function ReportsPage() {
         closed_by: profile.id,
         closed_by_name: profile.full_name,
         closing_notes: closingNotes || null,
-        closed_mileage: closeMileage ? Number(closeMileage) : null,
-        closed_hours: closeHours ? Number(closeHours) : null,
-        next_oil_change_at_close: nextOil ? Number(nextOil) : null,
+        closed_mileage: closedMileageValue,
+        closed_hours: closedHoursValue,
+        next_oil_change_at_close: nextOilValue,
         updated_at: new Date().toISOString()
       })
       .eq('id', selectedReport.id);
@@ -174,30 +178,32 @@ export default function ReportsPage() {
           updated_at: new Date().toISOString()
         };
 
-        const newMileage = closeMileage
-          ? Number(closeMileage)
-          : selectedReport.submitted_mileage ?? null;
+        const mileageToApply =
+          closedMileageValue !== null
+            ? closedMileageValue
+            : selectedReport.submitted_mileage ?? null;
 
-        const newHours = closeHours
-          ? Number(closeHours)
-          : selectedReport.submitted_hours ?? null;
+        const hoursToApply =
+          closedHoursValue !== null
+            ? closedHoursValue
+            : selectedReport.submitted_hours ?? null;
 
         if (
-          newMileage !== null &&
-          (!vehicle.current_mileage || newMileage > vehicle.current_mileage)
+          mileageToApply !== null &&
+          (vehicle.current_mileage === null || mileageToApply >= vehicle.current_mileage)
         ) {
-          vehicleUpdate.current_mileage = newMileage;
+          vehicleUpdate.current_mileage = mileageToApply;
         }
 
         if (
-          newHours !== null &&
-          (!vehicle.current_hours || newHours > vehicle.current_hours)
+          hoursToApply !== null &&
+          (vehicle.current_hours === null || hoursToApply >= vehicle.current_hours)
         ) {
-          vehicleUpdate.current_hours = newHours;
+          vehicleUpdate.current_hours = hoursToApply;
         }
 
-        if (nextOil) {
-          vehicleUpdate.next_oil_change = Number(nextOil);
+        if (nextOilValue !== null) {
+          vehicleUpdate.next_oil_change = nextOilValue;
         }
 
         const { error: vehicleError } = await supabase
