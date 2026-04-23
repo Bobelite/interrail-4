@@ -166,46 +166,40 @@ export default function ReportsPage() {
 
     if (reportError) {
       setSaving(false);
-      setScreenError(reportError.message);
+      setScreenError(`Report close failed: ${reportError.message}`);
       return;
     }
 
     if (selectedReport.vehicle_id) {
       const vehicle = vehicles[selectedReport.vehicle_id];
 
+      const mileageToApply =
+        closedMileageValue !== null
+          ? closedMileageValue
+          : selectedReport.submitted_mileage ?? null;
+
+      const hoursToApply =
+        closedHoursValue !== null
+          ? closedHoursValue
+          : selectedReport.submitted_hours ?? null;
+
+      const vehicleUpdate: Record<string, any> = {
+        updated_at: new Date().toISOString()
+      };
+
+      if (mileageToApply !== null) {
+        vehicleUpdate.current_mileage = mileageToApply;
+      }
+
+      if (hoursToApply !== null) {
+        vehicleUpdate.current_hours = hoursToApply;
+      }
+
+      if (nextOilValue !== null) {
+        vehicleUpdate.next_oil_change = nextOilValue;
+      }
+
       if (vehicle) {
-        const vehicleUpdate: Record<string, any> = {
-          updated_at: new Date().toISOString()
-        };
-
-        const mileageToApply =
-          closedMileageValue !== null
-            ? closedMileageValue
-            : selectedReport.submitted_mileage ?? null;
-
-        const hoursToApply =
-          closedHoursValue !== null
-            ? closedHoursValue
-            : selectedReport.submitted_hours ?? null;
-
-        if (
-          mileageToApply !== null &&
-          (vehicle.current_mileage === null || mileageToApply >= vehicle.current_mileage)
-        ) {
-          vehicleUpdate.current_mileage = mileageToApply;
-        }
-
-        if (
-          hoursToApply !== null &&
-          (vehicle.current_hours === null || hoursToApply >= vehicle.current_hours)
-        ) {
-          vehicleUpdate.current_hours = hoursToApply;
-        }
-
-        if (nextOilValue !== null) {
-          vehicleUpdate.next_oil_change = nextOilValue;
-        }
-
         const { error: vehicleError } = await supabase
           .from('vehicles')
           .update(vehicleUpdate)
@@ -213,7 +207,7 @@ export default function ReportsPage() {
 
         if (vehicleError) {
           setSaving(false);
-          setScreenError(vehicleError.message);
+          setScreenError(`Vehicle update failed: ${vehicleError.message}`);
           return;
         }
       }
@@ -240,15 +234,23 @@ export default function ReportsPage() {
     setSaving(true);
     setScreenError(null);
 
-    const { error } = await supabase
+    const deletingId = selectedReport.id;
+
+    const { error, data } = await supabase
       .from('reports')
       .delete()
-      .eq('id', selectedReport.id);
+      .eq('id', deletingId)
+      .select();
 
     setSaving(false);
 
     if (error) {
-      setScreenError(error.message);
+      setScreenError(`Delete failed: ${error.message}`);
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      setScreenError('Delete did not remove any report.');
       return;
     }
 
