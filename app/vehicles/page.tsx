@@ -49,42 +49,129 @@ export default function VehiclesPage() {
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [screenError, setScreenError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const [equipmentName, setEquipmentName] = useState('');
+  const [unitNumber, setUnitNumber] = useState('');
+  const [currentMileage, setCurrentMileage] = useState('');
+  const [currentHours, setCurrentHours] = useState('');
+  const [nextOilChange, setNextOilChange] = useState('');
+
+  const canManageVehicles = role === 'admin' || role === 'mechanic';
 
   useEffect(() => {
     if (!role) return;
-
-    void (async () => {
-      setScreenError(null);
-
-      const { data: vehicleData, error: vehicleError } = await supabase
-        .from('vehicles')
-        .select('*')
-        .order('equipment_name', { ascending: true });
-
-      if (vehicleError) {
-        setScreenError(vehicleError.message);
-        return;
-      }
-
-      const { data: reportData, error: reportError } = await supabase
-        .from('reports')
-        .select('id, vehicle_id, title, report_type, status, submitted_at, closed_at, description, closing_notes')
-        .order('submitted_at', { ascending: false });
-
-      if (reportError) {
-        setScreenError(reportError.message);
-        return;
-      }
-
-      const vehicleRows = (vehicleData || []) as VehicleRow[];
-      setVehicles(vehicleRows);
-      setReports((reportData || []) as ReportRow[]);
-
-      if (vehicleRows.length > 0) {
-        setSelectedVehicleId(vehicleRows[0].id);
-      }
-    })();
+    void loadData();
   }, [role]);
+
+  async function loadData() {
+    setScreenError(null);
+
+    const { data: vehicleData, error: vehicleError } = await supabase
+      .from('vehicles')
+      .select('*')
+      .order('equipment_name', { ascending: true });
+
+    if (vehicleError) {
+      setScreenError(vehicleError.message);
+      return;
+    }
+
+    const { data: reportData, error: reportError } = await supabase
+      .from('reports')
+      .select('id, vehicle_id, title, report_type, status, submitted_at, closed_at, description, closing_notes')
+      .order('submitted_at', { ascending: false });
+
+    if (reportError) {
+      setScreenError(reportError.message);
+      return;
+    }
+
+    const vehicleRows = (vehicleData || []) as VehicleRow[];
+    setVehicles(vehicleRows);
+    setReports((reportData || []) as ReportRow[]);
+
+    setSelectedVehicleId((current) => {
+      if (current && vehicleRows.some((v) => v.id === current)) return current;
+      return vehicleRows[0]?.id || null;
+    });
+  }
+
+  async function addVehicle(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canManageVehicles) return;
+
+    if (!equipmentName.trim()) {
+      setScreenError('Please enter an equipment name.');
+      return;
+    }
+
+    setSaving(true);
+    setScreenError(null);
+
+    const payload: Record<string, any> = {
+      equipment_name: equipmentName.trim(),
+      unit_number: unitNumber.trim() || null,
+      current_mileage: currentMileage ? Number(currentMileage) : null,
+      current_hours: currentHours ? Number(currentHours) : null,
+      next_oil_change: nextOilChange ? Number(nextOilChange) : null,
+      updated_at: new Date().toISOString()
+    };
+
+    const { error } = await supabase.from('vehicles').insert(payload);
+
+    setSaving(false);
+
+    if (error) {
+      setScreenError(error.message);
+      return;
+    }
+
+    setEquipmentName('');
+    setUnitNumber('');
+    setCurrentMileage('');
+    setCurrentHours('');
+    setNextOilChange('');
+
+    await loadData();
+  }
+
+  async function deleteVehicle() {
+    if (!canManageVehicles || !selectedVehicleId) return;
+
+    const vehicle = vehicles.find((v) => v.id === selectedVehicleId);
+
+    const hasHistory = reports.some((r) => r.vehicle_id === selectedVehicleId);
+    if (hasHistory) {
+      setScreenError(
+        'This vehicle has report history and cannot be deleted until its reports are removed or reassigned.'
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete vehicle "${vehicle?.equipment_name || 'Unnamed Vehicle'}" permanently?`
+    );
+
+    if (!confirmed) return;
+
+    setSaving(true);
+    setScreenError(null);
+
+    const { error } = await supabase
+      .from('vehicles')
+      .delete()
+      .eq('id', selectedVehicleId);
+
+    setSaving(false);
+
+    if (error) {
+      setScreenError(error.message);
+      return;
+    }
+
+    await loadData();
+  }
 
   const selectedVehicle = useMemo(
     () => vehicles.find((v) => v.id === selectedVehicleId) || null,
@@ -131,11 +218,94 @@ export default function VehiclesPage() {
     >
       {screenError ? <div className="error">{screenError}</div> : null}
 
+      {canManageVehicles ? (
+        <div className="card" style={{ marginBottom: 18 }}>
+          <div className="section-title">Add Vehicle</div>
+          <div className="section-sub">
+            Admins and mechanics can add new equipment here.
+          </div>
+
+          <form onSubmit={addVehicle}>
+            <div className="grid-2" style={{ marginTop: 16 }}>
+              <div className="field">
+                <label className="label">Equipment Name</label>
+                <input
+                  className="input"
+                  value={equipmentName}
+                  onChange={(e) => setEquipmentName(e.target.value)}
+                  placeholder="Example: Service Truck"
+                />
+              </div>
+
+              <div className="field">
+                <label className="label">Unit Number</label>
+                <input
+                  className="input"
+                  value={unitNumber}
+                  onChange={(e) => setUnitNumber(e.target.value)}
+                  placeholder="Example: 17"
+                />
+              </div>
+            </div>
+
+            <div className="grid-3" style={{ marginTop: 6 }}>
+              <div className="field">
+                <label className="label">Current Mileage</label>
+                <input
+                  className="input"
+                  value={currentMileage}
+                  onChange={(e) => setCurrentMileage(e.target.value)}
+                  placeholder="Optional"
+                />
+              </div>
+
+              <div className="field">
+                <label className="label">Current Hours</label>
+                <input
+                  className="input"
+                  value={currentHours}
+                  onChange={(e) => setCurrentHours(e.target.value)}
+                  placeholder="Optional"
+                />
+              </div>
+
+              <div className="field">
+                <label className="label">Next Oil Change</label>
+                <input
+                  className="input"
+                  value={nextOilChange}
+                  onChange={(e) => setNextOilChange(e.target.value)}
+                  placeholder="Optional"
+                />
+              </div>
+            </div>
+
+            <div className="inline-row" style={{ marginTop: 16 }}>
+              <button className="btn" type="submit" disabled={saving}>
+                {saving ? 'Saving…' : 'Add Vehicle'}
+              </button>
+
+              {selectedVehicle ? (
+                <button
+                  className="btn secondary"
+                  type="button"
+                  onClick={deleteVehicle}
+                  disabled={saving}
+                  style={{ borderColor: '#d9534f', color: '#b02a24' }}
+                >
+                  Delete Selected Vehicle
+                </button>
+              ) : null}
+            </div>
+          </form>
+        </div>
+      ) : null}
+
       <div className="grid-2">
         <div className="card">
           <div className="section-title">Vehicle List</div>
           <div className="section-sub">
-            Tap a vehicle to see current readings and recent repair/service history.
+            Tap a vehicle to see readings and recent repair/service history.
           </div>
 
           <div className="stack" style={{ marginTop: 16 }}>
