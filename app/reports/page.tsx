@@ -18,6 +18,8 @@ type ReportRow = {
   submitted_hours: number | null;
   closing_notes: string | null;
   next_oil_change_at_close: number | null;
+  closed_by: string | null;
+  closed_by_name: string | null;
 };
 
 type VehicleRow = {
@@ -29,7 +31,7 @@ type VehicleRow = {
   next_oil_change: number | null;
 };
 
-function formatDate(value: string | null) {
+function formatDateTime(value: string | null) {
   if (!value) return '—';
   return new Date(value).toLocaleString();
 }
@@ -104,7 +106,13 @@ export default function ReportsPage() {
     });
 
     setReports(filtered);
-    setSelectedReport(filtered[0] || null);
+    setSelectedReport((current) => {
+      if (current) {
+        const updated = filtered.find((r) => r.id === current.id);
+        if (updated) return updated;
+      }
+      return filtered[0] || null;
+    });
   }
 
   async function markInProgress() {
@@ -143,6 +151,7 @@ export default function ReportsPage() {
         status: 'Closed',
         closed_at: new Date().toISOString(),
         closed_by: profile.id,
+        closed_by_name: profile.full_name,
         closing_notes: closingNotes || null,
         closed_mileage: closeMileage ? Number(closeMileage) : null,
         closed_hours: closeHours ? Number(closeHours) : null,
@@ -213,6 +222,34 @@ export default function ReportsPage() {
     await loadData();
   }
 
+  async function deleteReport() {
+    if (!selectedReport || !isAdmin) return;
+
+    const confirmed = window.confirm(
+      'Delete this report permanently? This cannot be undone.'
+    );
+
+    if (!confirmed) return;
+
+    setSaving(true);
+    setScreenError(null);
+
+    const { error } = await supabase
+      .from('reports')
+      .delete()
+      .eq('id', selectedReport.id);
+
+    setSaving(false);
+
+    if (error) {
+      setScreenError(error.message);
+      return;
+    }
+
+    setSelectedReport(null);
+    await loadData();
+  }
+
   async function exportAllReportsCsv() {
     setScreenError(null);
 
@@ -235,6 +272,7 @@ export default function ReportsPage() {
       'vehicle_id',
       'submitted_at',
       'closed_at',
+      'closed_by_name',
       'submitted_mileage',
       'submitted_hours',
       'closed_mileage',
@@ -369,12 +407,12 @@ export default function ReportsPage() {
               <div className="grid-2" style={{ marginTop: 18 }}>
                 <div className="card" style={{ padding: 16 }}>
                   <div className="small" style={{ fontWeight: 700 }}>Submitted</div>
-                  <div style={{ marginTop: 6 }}>{formatDate(selectedReport.submitted_at)}</div>
+                  <div style={{ marginTop: 6 }}>{formatDateTime(selectedReport.submitted_at)}</div>
                 </div>
 
                 <div className="card" style={{ padding: 16 }}>
                   <div className="small" style={{ fontWeight: 700 }}>Closed</div>
-                  <div style={{ marginTop: 6 }}>{formatDate(selectedReport.closed_at)}</div>
+                  <div style={{ marginTop: 6 }}>{formatDateTime(selectedReport.closed_at)}</div>
                 </div>
               </div>
 
@@ -387,6 +425,20 @@ export default function ReportsPage() {
                 <div className="card" style={{ padding: 16 }}>
                   <div className="small" style={{ fontWeight: 700 }}>Submitted Hours</div>
                   <div style={{ marginTop: 6 }}>{formatNumber(selectedReport.submitted_hours)}</div>
+                </div>
+              </div>
+
+              <div className="grid-2" style={{ marginTop: 18 }}>
+                <div className="card" style={{ padding: 16 }}>
+                  <div className="small" style={{ fontWeight: 700 }}>Closed By</div>
+                  <div style={{ marginTop: 6 }}>
+                    {selectedReport.closed_by_name || '—'}
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: 16 }}>
+                  <div className="small" style={{ fontWeight: 700 }}>Closed Timestamp</div>
+                  <div style={{ marginTop: 6 }}>{formatDateTime(selectedReport.closed_at)}</div>
                 </div>
               </div>
 
@@ -450,6 +502,26 @@ export default function ReportsPage() {
 
                     <button className="btn" onClick={closeReport} disabled={saving}>
                       {saving ? 'Saving…' : 'Close Report'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {isAdmin ? (
+                <div className="card" style={{ marginTop: 18, borderColor: '#f0b8b2' }}>
+                  <div className="section-title">Admin Only</div>
+                  <div className="section-sub">
+                    Permanently delete this report and remove it from the system.
+                  </div>
+
+                  <div style={{ marginTop: 16 }}>
+                    <button
+                      className="btn secondary"
+                      onClick={deleteReport}
+                      disabled={saving}
+                      style={{ borderColor: '#d9534f', color: '#b02a24' }}
+                    >
+                      Delete Report Permanently
                     </button>
                   </div>
                 </div>
